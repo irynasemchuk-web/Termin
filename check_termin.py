@@ -1,7 +1,9 @@
 """
-Проверяет страницу выбора места (Fahrerlaubnisbehörde Düsseldorf).
-Если после слов "2. Etage" появляется дата/время — шлёт push через ntfy.
+Следит за страницей выбора места (Fahrerlaubnisbehörde Düsseldorf).
+Если на странице хоть что-то изменилось по сравнению с прошлой проверкой —
+шлёт push через ntfy. Прошлое состояние хранится в файле baseline.txt.
 """
+import difflib
 import html as htmllib
 import os
 import re
@@ -9,6 +11,7 @@ import sys
 
 import requests
 
+START_URL = "https://termine.duesseldorf.de/select2?md=3"
 URL = (
     "https://termine.duesseldorf.de/location?mdt=402&select_cnc=1"
     "&cnc-5885=0&cnc-5886=0&cnc-5888=0&cnc-5860=0&cnc-5874=0&cnc-5872=0"
@@ -19,17 +22,9 @@ URL = (
 )
 
 NTFY_TOPIC = os.environ["NTFY_TOPIC"]
+BASELINE = "baseline.txt"
 
 TIME_RE = re.compile(r"\b\d{1,2}:\d{2}\b")
-DATE_RE = re.compile(r"\b\d{1,2}\.\s?\d{1,2}\.(\d{2,4})?")
-MONTH_RE = re.compile(
-    r"\b(Januar|Februar|März|April|Mai|Juni|Juli|August|September|"
-    r"Oktober|November|Dezember)\b",
-    re.I,
-)
-
-
-START_URL = "https://termine.duesseldorf.de/select2?md=3"
 
 
 def page_text() -> str:
@@ -44,9 +39,7 @@ def page_text() -> str:
             "Accept-Language": "de-DE,de;q=0.9",
         }
     )
-    # 1) Стартовая страница создаёт сессию (cookies)
     s.get(START_URL, timeout=30).raise_for_status()
-    # 2) Теперь открываем страницу выбора места уже с этой сессией
     r = s.get(URL, timeout=30, headers={"Referer": START_URL})
     r.raise_for_status()
     t = re.sub(r"<(script|style).*?</\1>", " ", r.text, flags=re.S | re.I)
@@ -55,12 +48,12 @@ def page_text() -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def notify(msg: str):
+def notify(title: str, msg: str):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
         data=msg.encode("utf-8"),
         headers={
-            "Title": "Termin frei!",
+            "Title": title,
             "Priority": "urgent",
             "Tags": "rotating_light",
             "Click": URL,
@@ -72,20 +65,45 @@ def notify(msg: str):
 def main():
     text = page_text()
 
-    # Страница не та (сессия, ошибка, блокировка) -> job упадёт, GitHub пришлёт письмо
     if "Fahrerlaubnisbehörde" not in text:
         print("Неожиданная страница:", text[:500])
         sys.exit(1)
 
-    idx = text.find("Etage")
-    after = text[idx + len("Etage"):][:2000] if idx >= 0 else ""
-    print("Текст после 'Etage':", after[:400])
+    # Отбрасываем всё до заголовка шага (баннер cookies и т.п.)
+    start = text.find("Schritt")
+    if start >= 0:
+        text = text[start:]
 
-    if TIME_RE.search(after) or DATE_RE.search(after) or MONTH_RE.search(after):
-        notify("Появились свободные слоты! Открой ссылку и выбери время.\n\n" + after[:200])
-        print("Уведомление отправлено")
-    else:
-        print("Мест нет")
+    print("Текст страницы:", text[:800])
+
+    if not os.path.exists(BASELINE):
+        with open(BASELINE, "w", encoding="utf-8") as f:
+            f.write(text)
+        print("Первый запуск: состояние сохранено, уведомления нет.")
+        return
+
+    with open(BASELINE, encoding="utf-8") as f:
+        old = f.read()
+
+    if old == text:
+        print("Без изменений.")
+        return
+
+    diff = list(difflib.ndiff(old.split(), text.split()))
+    added = " ".join(d[2:] for d in diff if d.startswith("+ "))
+    removed = " ".join(d[2:] for d in diff if d.startswith("- "))
+    print("Добавлено:", added)
+    print("Удалено:", removed)
+
+    title = "Termin: Seite geaendert"
+    if TIME_RE.search(added):
+        title = "Termin: SLOTS frei?"
+    msg = f"Страница изменилась!\n\nНовое: {added[:250] or '-'}\nУбрано: {removed[:150] or '-'}"
+    notify(title, msg)
+
+    with open(BASELINE, "w", encoding="utf-8") as f:
+        f.write(text)
+    print("Уведомление отправлено, состояние обновлено.")
 
 
 if __name__ == "__main__":
