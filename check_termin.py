@@ -29,19 +29,25 @@ MONTH_RE = re.compile(
 )
 
 
+START_URL = "https://termine.duesseldorf.de/select2?md=3"
+
+
 def page_text() -> str:
-    r = requests.get(
-        URL,
-        timeout=30,
-        headers={
+    s = requests.Session()
+    s.headers.update(
+        {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
                 "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
                 "Mobile/15E148 Safari/604.1"
             ),
             "Accept-Language": "de-DE,de;q=0.9",
-        },
+        }
     )
+    # 1) Стартовая страница создаёт сессию (cookies)
+    s.get(START_URL, timeout=30).raise_for_status()
+    # 2) Теперь открываем страницу выбора места уже с этой сессией
+    r = s.get(URL, timeout=30, headers={"Referer": START_URL})
     r.raise_for_status()
     t = re.sub(r"<(script|style).*?</\1>", " ", r.text, flags=re.S | re.I)
     t = re.sub(r"<[^>]+>", " ", t)
