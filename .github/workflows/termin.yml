@@ -5,13 +5,14 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: termin
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,9 +22,3 @@ jobs:
       - run: python check_termin.py
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      - name: Save state
-        run: |
-          git config user.name "termin-bot"
-          git config user.email "termin-bot@users.noreply.github.com"
-          git add baseline.txt
-          git diff --cached --quiet || (git commit -m "update baseline" && git push)
