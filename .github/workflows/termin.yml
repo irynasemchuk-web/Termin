@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      test_notify:
+        description: "Только проверить уведомление на телефон"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +28,7 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           LOOP_SECONDS: "150"
+          NOTIFY_TEST: ${{ inputs.test_notify }}
           BOOKING_NAME: ${{ secrets.BOOKING_NAME }}
           BOOKING_BIRTHDATE: ${{ secrets.BOOKING_BIRTHDATE }}
           BOOKING_EMAIL: ${{ secrets.BOOKING_EMAIL }}
