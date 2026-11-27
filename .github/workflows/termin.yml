@@ -5,6 +5,10 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -19,3 +23,8 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           LOOP_SECONDS: "150"
+          BOOKING_NAME: ${{ secrets.BOOKING_NAME }}
+          BOOKING_BIRTHDATE: ${{ secrets.BOOKING_BIRTHDATE }}
+          BOOKING_EMAIL: ${{ secrets.BOOKING_EMAIL }}
+          BOOKING_PHONE: ${{ secrets.BOOKING_PHONE }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
